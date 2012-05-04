@@ -51,7 +51,7 @@ loop(State) ->
 		{add, Key, Value} ->
 			loop(add_key(Key, Value, State));
 		{get, Key, Caller} ->
-			Caller!find(Key, State),
+			Caller!{result, find(Key, State)},
 			loop(State);
 		{remove, Key} ->
 			loop(delete_key(Key, State));
@@ -76,8 +76,6 @@ add_key(Key, Value, State) ->
 	],
 	NewNodeList = dict:append(Key, AliasKeys, NodeList),
 	NewTree = lists:foldl(fun(X, T) -> gb_tree2:enter(X, Key, T) end, Tree, AliasKeys),
-	{Count, _} = NewTree,
-	io:format("Tree has ~p nodes ~n", [Count]),
 	State#state{ tree = NewTree, lookup = NewLookup, nodelist = NewNodeList }.
 
 find(Key, State) ->
