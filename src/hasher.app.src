@@ -1,0 +1,9 @@
+{application, hasher,
+ [
+  {description, "Consistent hash"},
+  {vsn, "0.1.0"},
+  {modules, [hasher, gb_tree2, murmerl]},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {env, []}
+ ]}.
