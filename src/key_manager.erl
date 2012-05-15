@@ -25,7 +25,7 @@
          code_change/3]).
 
 %% API
--export([add_hash/1, add_key/3, get_keys/1]).
+-export([add_hash/1, add_key/3, get_keys/1, remove_key/2]).
 
 -record(state, {lookup = dict:new()}).
 
@@ -36,11 +36,14 @@
 add_hash(HashId) when is_atom(HashId) ->
     gen_server:cast(?MODULE, {add_hash, HashId}).
 
-add_key(HashId, Key, Value) when is_atom(HashId) ->
+add_key(Key, Value, HashId) when is_atom(HashId) ->
     gen_server:cast(?MODULE, {add_key, HashId, Key, Value}).
 
 get_keys(HashId) when is_atom(HashId) ->
     gen_server:call(?MODULE, {get_keys, HashId}).
+
+remove_key(Key, HashId) when is_atom(HashId) ->
+    gen_server:cast(?MODULE, {remove_key, HashId, Key}).
 
 %%===================================================================
 %%% gen_server
@@ -61,6 +64,10 @@ handle_call(_Request, _From, State) ->
 
 handle_cast({add_key, HashId, Key, Value}, State) ->
     add_key(HashId, Key, Value, State#state.lookup),
+    {noreply, State};
+
+handle_cast({remove_key, HashId, Key}, State) ->
+    remove_key(HashId, Key, State#state.lookup),
     {noreply, State};
 
 handle_cast({add_hash, HashId}, State) ->
@@ -99,4 +106,12 @@ get_keys(HashId, Lookup) ->
         {ok, [Table]} ->
             [{X,Y} || [{X,Y}] <- ets:match(Table, '$1')];
         _ -> []
+    end.
+
+remove_key(HashId, Key, Lookup) ->
+    case dict:find(HashId, Lookup) of
+        {ok, [Table]} ->
+            ets:delete(Table, Key),
+            ok;
+        _ -> ok
     end.

@@ -24,7 +24,7 @@
 
 -define(PREFIX, "hasher").
 
--record(state, {nodes, tree=gb_tree2:empty(), lookup=dict:new(), nodelist=dict:new()}).
+-record(state, {id, nodes, tree=gb_tree2:empty(), lookup=dict:new(), nodelist=dict:new()}).
 
 %%===================================================================
 %%% gen_server
@@ -34,7 +34,7 @@ start_link(HashId, VirtualNodes) ->
     gen_server:start_link(?MODULE, [HashId, VirtualNodes], []).
 
 init([HashId, VirtualNodes]) ->
-    State = #state{nodes = VirtualNodes},
+    State = #state{id = HashId, nodes = VirtualNodes},
     process_util:register([?PREFIX, HashId]),
     NewState =
         case key_manager:get_keys(HashId) of
@@ -82,6 +82,8 @@ add_key(Key, Value, State) when is_binary(Key) ->
     Lookup = State#state.lookup,
     VirtualNodes = State#state.nodes,
     NodeList = State#state.nodelist,
+    HashId = State#state.id,
+    key_manager:add_key(Key, Value, HashId),
 
     NewLookup = dict:append(Key, Value, Lookup),
     BitList = binary_to_list(Key),
@@ -115,12 +117,14 @@ delete_key(Key, State) when is_binary(Key) ->
     Tree = State#state.tree,
     Lookup = State#state.lookup,
     NodeList = State#state.nodelist,
+    HashId = State#state.id,
+    key_manager:remove_key(Key, HashId),
+
     case dict:is_key(Key, Lookup) of
         true ->
             NewLookup = dict:erase(Key, Lookup),
             AliasKeys = lists:flatten(dict:fetch(Key, NodeList)),
             NewNodeList = dict:erase(Key, NodeList),
-
             NewTree = case AliasKeys of
                 [] -> Tree;
                 Keys ->
