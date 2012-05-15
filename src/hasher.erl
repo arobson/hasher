@@ -1,153 +1,80 @@
 %%% @author Alex Robson
-%%% @copyright appendTo, 2012
+%%% @copyright 2012
 %%% @doc
 %%%
-%%% A consistent hash based on murmurhash3 =:= stupid fast, low collision.
-%%%
+%%% 
+%%% 
 %%% @end
-%%% @license MIT
-%%% Created May 4, 2012 by Alex Robson
+%%% Licensed under the MIT license - http://www.opensource.org/licenses/mit-license
+%%% Created May 12, 2012 by Alex Robson
 
 -module(hasher).
 
--export([add/2, remove/1, get/1, start_link/1, init/1, node_count/0]).
+-export([start/0, stop/0]).
+%% api calls
+-export([add/3, remove/2, get/2, new/1, new/2, node_count/1]).
 
--define(SERVER, ?MODULE).
+-define(PREFIX, "hasher").
 
--record(state, {factor, tree=gb_tree2:empty(), lookup=dict:new(), nodelist=dict:new()}).
+%%===================================================================
+%%% Spec
+%%===================================================================
+
+-spec add( any(), any(), any() ) -> ok.
+
+-spec get( any(), any() ) -> any() | undefined.
+
+-spec new( any() ) -> ok.
+-spec new( any(), pos_integer() ) -> ok.
+
+-spec node_count( any() ) -> integer | unknown.
+
+-spec remove( any(), any() ) -> ok.
 
 %%===================================================================
 %%% API
 %%===================================================================
 
-add(Key, Value) ->
-	?MODULE!{add, Key, Value}.
+add(Key, Value, HashId) ->
+    cast(HashId, {add, Key, Value}),
+    ok.
 
-get(Key) ->
-	?MODULE!{get, Key, self()},
-	receive
-		{result, [Value]} -> Value
-	after
-		100 -> undefined
-	end.
+get(Key, HashId) ->
+    call(HashId, {get, Key}).
 
-node_count() ->
-	?MODULE!{count, self()},
-	receive
-		{result, Value} -> Value
-	after
-		100 -> unknown
-	end.
+new(HashId) ->
+    new(HashId, 100), 
+    ok.
 
-remove(Key) ->
-	?MODULE!{ remove, Key}.
+new(HashId, VirtualNodes) ->
+    instance_sup:new(HashId, VirtualNodes),
+    ok.
 
-%%===================================================================
-%%% Main
-%%===================================================================
+node_count(HashId) ->
+    call(HashId, count).
 
-start_link(Factor) ->
-	Pid = spawn_link(?SERVER, init, [Factor]),
-	register(?MODULE, Pid),
-	{ok, Pid}.
+remove(Key, HashId) ->
+    cast(HashId, {remove, Key}).
 
-init(Factor) ->
-	loop(#state{factor = Factor}).
+start() ->
+	application:load(hasher),
+	application:start(hasher).
 
-loop(State) ->
-	receive
-		{add, Key, Value} ->
-			loop(add_key(Key, Value, State));
-		{count, Caller} ->
-			{Count, _} = State#state.tree,
-			Caller!{result, Count},
-			loop(State);
-		{get, Key, Caller} ->
-			Caller!{result, find(Key, State)},
-			loop(State);
-		{remove, Key} ->
-			loop(delete_key(Key, State));
-		stop ->
-			ok
-	end.
+stop() ->
+	application:stop(hasher).
 
 %%===================================================================
 %%% Internal
 %%===================================================================
 
-add_key(Key, Value, State) when is_atom(Key) ->
-	add_key(atom_to_list(Key), Value, State);
-
-add_key(Key, Value, State) when is_integer(Key) ->
-	add_key(integer_to_list(Key), Value, State);
-
-add_key(Key, Value, State) when is_float(Key) ->
-	add_key(float_to_list(Key), Value, State);
-
-add_key(Key, Value, State) when is_list(Key) ->
-	Tree = State#state.tree,
-	Lookup = State#state.lookup,
-	Factor = State#state.factor,
-	NodeList = State#state.nodelist,
-
-	NewLookup = dict:append(Key, Value, Lookup),
-	AliasKeys = [ 
-		murmerl:hash_32( string:join([Key, integer_to_list(X)],".") )
-		|| X <- lists:seq(1, Factor) 
-	],
-	NewNodeList = dict:append(Key, AliasKeys, NodeList),
-	NewTree = lists:foldl(fun(X, T) -> gb_tree2:enter(X, Key, T) end, Tree, AliasKeys),
-	%% depending on Factor, this could be *a lot* of deletions,
-	%% in order to maintain good lookup perf (assuming deletions are relatively rare)
-	%% this rebalances the tree vs. hoping for the best.
-	Rebalance = gb_tree2:balance(NewTree),
-	State#state{ tree = Rebalance, lookup = NewLookup, nodelist = NewNodeList }.
-
-find(Key, State) when is_atom(Key) ->
-	find(atom_to_list(Key), State);
-
-find(Key, State) when is_integer(Key) ->
-	find(integer_to_list(Key), State);
-
-find(Key, State) when is_float(Key) ->
-	find(float_to_list(Key), State);
-
-find(Key, State) when is_list(Key) ->
-	Tree = State#state.tree,
-	Lookup = State#state.lookup,
-
-	HashKey = murmerl:hash_32(Key),
-	{value, LookupKey} = gb_tree2:closest(HashKey, Tree),
-	case dict:is_key(LookupKey, Lookup) of
-		true -> dict:fetch(LookupKey, Lookup);
-		_ -> not_found
+call(HashId, Message) ->
+    case process_util:get_pid([?PREFIX, HashId]) of
+    	undefined -> no_hash;
+    	Pid -> gen_server:call(Pid, Message)
 	end.
 
-delete_key(Key, State) when is_atom(Key) ->
-	delete_key(atom_to_list(Key), State);
-
-delete_key(Key, State) when is_integer(Key) ->
-	delete_key(integer_to_list(Key), State);
-
-delete_key(Key, State) when is_float(Key) ->
-	delete_key(float_to_list(Key), State);
-
-delete_key(Key, State) when is_list(Key) ->
-	Tree = State#state.tree,
-	Lookup = State#state.lookup,
-	NodeList = State#state.nodelist,
-
-	case dict:is_key(Key, Lookup) of
-		true ->
-			NewLookup = dict:erase(Key, Lookup),
-			[AliasKeys] = dict:fetch(Key, NodeList),
-			NewNodeList = dict:erase(Key, NodeList),
-			NewTree = lists:foldl(fun(X, T) -> gb_tree2:delete_any(X, T) end, Tree, AliasKeys),
-			%% depending on Factor, this could be *a lot* of deletions,
-			%% in order to maintain good lookup perf (assuming deletions are relatively rare)
-			%% this rebalances the tree vs. hoping for the best.
-			Rebalance = gb_tree2:balance(NewTree),
-			State#state{ tree = Rebalance, lookup = NewLookup, nodelist = NewNodeList };
-		_ -> State
+cast(HashId, Message) ->
+    case process_util:get_pid([?PREFIX, HashId]) of
+    	undefined -> no_hash;
+    	Pid -> gen_server:cast(Pid, Message)
 	end.
-

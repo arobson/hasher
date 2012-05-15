@@ -2,8 +2,9 @@
  [
   {description, "Consistent hash"},
   {vsn, "0.1.0"},
-  {modules, [hasher, gb_tree2, murmerl]},
+  {modules, []},
   {registered, []},
-  {applications, [kernel, stdlib]},
+  {applications, [kernel, stdlib, sasl]},
+  {mod, { hasher_app, []}},
   {env, []}
  ]}.

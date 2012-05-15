@@ -243,7 +243,9 @@ closest_1(Key, {Key1, Value, _, nil}) when Key > Key1 ->
 closest_1(Key, {Key1, _, _, Bigger}) when Key > Key1 ->
     closest_1(Key, Bigger);
 closest_1(_, {_, Value, _, _}) ->
-    {value, Value}.
+    {value, Value};
+closest_1(_, _) ->
+    {value, undefined}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

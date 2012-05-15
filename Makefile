@@ -1,5 +1,6 @@
 REBAR=$(shell which rebar || ./rebar)
 SYNC_PATH = $(ERL_LIBS)/sync
+PROPER_PATH = $(ERL_LIBS)/proper
 
 all: deps compile
 
@@ -23,6 +24,6 @@ test: app
 
 start:
 		if test -d $(SYNC_PATH); \
-		then exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin; \
-		else exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin-s reloader; \
+		then exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin -boot start_sasl -run hasher; \
+		else exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin -boot start_sasl -s reloader -run hasher; \
 		fi
